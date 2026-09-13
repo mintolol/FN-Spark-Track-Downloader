@@ -1,0 +1,124 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FN Spark Tracks</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+body { font-family: 'Inter', 'Segoe UI', sans-serif; background: #0f1117; color: #e6edf3; margin:0; padding:20px;}
+h1 { text-align:center; color:#58a6ff; font-weight:600; }
+#search-box { width:100%; max-width:500px; display:block; margin:20px auto; padding:12px 16px; border-radius:12px; border:none; background:#161b22; color:#e6edf3; font-size:16px; box-shadow: inset 0 0 5px #0005;}
+#tracks { display:grid; grid-template-columns:repeat(auto-fit, minmax(360px,1fr)); gap:18px; }
+.track { display:flex; background:#1a1f2a; border-radius:14px; padding:16px; box-shadow:0 6px 15px rgba(0,0,0,0.4); transition: transform 0.2s, box-shadow 0.2s; cursor:pointer; align-items:center;}
+.track:hover { transform:translateY(-4px); box-shadow:0 10px 25px rgba(0,0,0,0.5);}
+.track img { width:110px; height:110px; border-radius:10px; margin-right:18px; object-fit:cover;}
+.track-info h2 { margin:0; font-size:20px; color:#58a6ff; font-weight:600;}
+.track-info p { margin:4px 0; font-size:14px; color:#cfd6e4;}
+.modal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); justify-content:center; align-items:center;}
+.modal-content { background:#2b2f3a; padding:30px; border-radius:16px; text-align:center; max-width:400px; box-shadow:0 10px 30px rgba(0,0,0,0.6);}
+.modal-content p { font-size:18px; font-weight:600; margin-bottom:20px;}
+button { margin:8px; padding:12px 24px; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; transition:0.2s;}
+button:hover { opacity:0.85;}
+#normalBtn { background:#58a6ff; color:#fff; }
+#instrBtn { background:#ff5c58; color:#fff; }
+#cancelBtn { background:#666; color:#fff; }
+footer { text-align:center; margin-top:40px; color:#888; font-size:14px; }
+</style>
+</head>
+<body>
+<h1>FN Spark Tracks</h1>
+<input type="text" id="search-box" placeholder="Search by title or artist...">
+<div id="tracks"></div>
+
+<div class="modal" id="versionModal">
+  <div class="modal-content">
+    <p id="trackTitle">Track</p>
+    <button id="normalBtn">Normal</button>
+    <button id="instrBtn">Instrumental</button>
+    <br><br>
+    <button id="cancelBtn" onclick="closeModal()">Cancel</button>
+  </div>
+</div>
+
+<script>
+let tracksData = [];
+const tracksDiv = document.getElementById('tracks');
+const searchBox = document.getElementById('search-box');
+const modal = document.getElementById('versionModal');
+const trackTitle = document.getElementById('trackTitle');
+let currentTrack = null;
+
+fetch('song.json')
+.then(resp => resp.json())
+.then(data => {
+    tracksData = data;
+    renderTracks();
+});
+
+function renderTracks(){
+    tracksDiv.innerHTML = '';
+    tracksData.forEach(t=>{
+        const div = document.createElement('div');
+        div.className = 'track';
+        div.dataset.title = t.tt.toLowerCase();
+        div.dataset.artist = t.an.toLowerCase();
+        div.dataset.sid = t.sid;
+        div.dataset.instr = t.instrumentalId;
+        div.innerHTML = `<img src="${t.au}" alt="${t.tt}"><div class="track-info"><h2>${t.tt}</h2><p>👤 Artist: ${t.an}</p><p>📅 Year: ${t.year}</p></div>`;
+        div.addEventListener('click', ()=>{
+            currentTrack = t;
+            trackTitle.textContent = t.tt;
+            modal.style.display='flex';
+        });
+        tracksDiv.appendChild(div);
+    });
+}
+
+searchBox.addEventListener('input', ()=>{
+    const q = searchBox.value.toLowerCase();
+    Array.from(tracksDiv.children).forEach(div=>{
+        const title = div.dataset.title;
+        const artist = div.dataset.artist;
+        div.style.display = (title.includes(q) || artist.includes(q)) ? 'flex':'none';
+    });
+});
+
+function closeModal(){ modal.style.display='none'; currentTrack=null; }
+
+async function downloadBlurl(sid, isInstr=false){
+    if(!sid){ alert("⚠️ SID missing"); return; }
+    try{
+        const resp = await fetch(`https://cdn.qstv.on.epicgames.com/${sid}`);
+        const data = await resp.json();
+        const baseUrls = data.metadata?.baseUrls;
+        if(!baseUrls || baseUrls.length===0){ alert("⚠️ baseUrls missing"); return; }
+        const parts = baseUrls[0].split("/");
+        const blurlUrl = `https://fortnite-vod.akamaized.net/${parts[3]}/master.blurl`;
+
+        const fileResp = await fetch(blurlUrl);
+        if(!fileResp.ok) throw new Error("Failed to fetch .blurl");
+        const blob = await fileResp.blob();
+
+        let filename = currentTrack.tt.trim().replace(/[\/:*?"<>|]/g,"");
+        if(isInstr) filename += " - Instrumental.blurl";
+        else filename += ".blurl";
+
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(a.href);
+        closeModal();
+    } catch(e){ alert("❌ Download failed: "+e); }
+}
+
+document.getElementById('normalBtn').onclick = ()=>downloadBlurl(currentTrack.sid,false);
+document.getElementById('instrBtn').onclick = ()=>downloadBlurl(currentTrack.instrumentalId,true);
+</script>
+
+</body>
+</html>
